@@ -123,6 +123,52 @@ POM dependencies (`compile`): `androidx.annotation:annotation:1.1.0` (upstream's
 only Android dependency) and `org.jetbrains.kotlin:kotlin-stdlib:2.1.10` (the
 Kotlin jars are compiled with the image's kotlinc 2.1.10).
 
-### Consumer notes
+### Consumer notes (1.6.0.0-1 vs `com.google.matter:matter-android-demo-sdk:1.0`)
 
-Filled in after the first published build; see the section below.
+Verified 2026-09-18 by resolving `ai.asleep:matter-controller-android:1.6.0.0-1`
+from a throwaway AGP 8.11 library project and diffing `javap -public` output
+against the demo AAR. Build: ninja 6 min, whole build job 11 min on
+`ubuntu-latest`; `libCHIPController.so` 4.67 MB stripped (demo: 26.5 MB),
+`libc++_shared.so` 1.25 MB, AAR 10.9 MB, 9298 classes.
+
+Packaging differences:
+
+- **arm64-v8a only.** The demo carried armeabi-v7a, x86 and x86_64 too. An
+  x86_64 emulator cannot load this artifact; add `abiFilters` or an ABI split so
+  the app does not silently ship without the native library.
+- **One `classes.jar`** instead of three jars under `libs/`; no code change needed.
+- **`chip.setuppayload.*` is gone.** Upstream replaced it with the Kotlin package
+  `matter.onboardingpayload.*` (`OnboardingPayloadParser.parseQrCode`,
+  `parseManualPairingCode`, `getQrCodeFromPayload`,
+  `getManualPairingCodeFromPayload`; exceptions `OnboardingPayloadException`,
+  `UnrecognizedQrCodeException`, `InvalidManualPairingCodeFormatException`).
+  `libSetupPayloadParser.so` no longer exists; the JNI moved into
+  `libCHIPController.so`.
+- **`minSdk 24`** (demo: 27). `kotlin-stdlib` 2.1.10 and
+  `androidx.annotation` 1.1.0 come in as POM dependencies.
+
+API differences the consumer will hit:
+
+| Area | Demo AAR | This artifact |
+|---|---|---|
+| `AndroidChipPlatform` constructor | 7 args (`BleManager, KeyValueStoreManager, ConfigurationManager, ServiceResolver, ServiceBrowser, ChipMdnsCallback, DiagnosticDataProvider`) | 8 args: a `NfcCommissioningManager` is inserted as the **second** argument (`AndroidNfcCommissioningManager()` is the stock implementation) |
+| `AndroidBleManager` | `()` only | `(Context)` and `()` |
+| `BleManager.onNewConnection` | `(int)` | `(int connId, boolean isLongDiscriminator, long discriminator, long setupPin)`; custom `BleManager` implementations must update the override |
+| `ChipDeviceController.pairDeviceWithCode` | absent | present: `(long deviceId, String setupCode, boolean discoverOnce, boolean useOnlyOnNetworkDiscovery, byte[] csrNonce, NetworkCredentials)`, plus `ICDRegistrationInfo` and `CommissionParameters` overloads |
+| `pairDevice(BluetoothGatt, ...)` / `pairDeviceWithAddress` | present | same signatures kept, plus `ICDRegistrationInfo` / `CommissionParameters` overloads and `pairDeviceThroughBLE`, `pairDeviceThroughNfc` |
+| `ControllerParams.Builder.setSkipAttestationCertificateValidation(boolean)` | absent | present (also `setEnableServerInteractions`) |
+| `readAttributePath` / `readEventPath` / `readPath` | `(callback, deviceId, paths[, ...])` | every overload gained a trailing `int imTimeoutMs`; `readPath` also has a `DataVersionFilter` variant |
+| `subscribeToAttributePath` / `subscribeToEventPath` / `subscribeToPath` | `(..., minInterval, maxInterval[, ...])` | trailing `int imTimeoutMs` added; `subscribeToEventPath` / `subscribeToPath` also take an optional `Long eventMin` |
+| `write` / `invoke` | present | present, same shape (`WriteAttributesCallback` / `InvokeCallback`, timed and IM timeouts) |
+| `openPairingWindowWithPIN[Callback]` | present | removed; use `openPairingWindowWithPINCallback` replacements on the commissioning window opener (`AndroidCommissioningWindowOpener` JNI) or the `AdministratorCommissioning` cluster |
+| `onNOCChainGeneration`, `extractSkidFromPaaCert` | public | no longer public on the controller |
+| Callback shims `onPairingComplete`, `onPairingDeleted`, `onCommissioningComplete`, `onCommissioningStatusUpdate`, `onScanNetworks*` | public methods on the controller | no longer public; only `CompletionListener` receives them |
+
+Everything else in `ChipDeviceController` (`setCompletionListener`,
+`establishPaseConnection`, `unpairDevice`, `getConnectedDevicePointer`,
+`NetworkCredentials.forWiFi`/`forThread`) is signature-identical.
+
+Licensing: the AAR carries upstream's `LICENSE` and `NOTICE` under `META-INF/`
+(Apache-2.0). `libc++_shared.so` is the NDK's LLVM libc++ (Apache-2.0 with LLVM
+exception). "Matter" and "CHIP" are Connectivity Standards Alliance trademarks;
+the artifact name is descriptive, and nothing here claims certification.
