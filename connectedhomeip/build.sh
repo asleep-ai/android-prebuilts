@@ -60,9 +60,18 @@ rm -rf .environment/cipd/packages/arm || true
 # defaults to true -- and (b) then compiles the CHIPTool demo APK with Gradle. We only need the
 # controller library, so run upstream's `gen` step (identical gn args) and then ninja just the
 # library targets. Same inputs, same compiler flags, a fraction of the work.
+# gen also runs third_party/android_deps/gradlew (downloads a Gradle distribution and
+# androidx.annotation); that network fetch has failed transiently on hosted runners, so retry.
 echo "==> gn gen $TARGET (release)"
-./scripts/run_in_build_env.sh \
-    "./scripts/build/build_examples.py --target $TARGET --build-profile release gen"
+for attempt in 1 2 3; do
+    if ./scripts/run_in_build_env.sh \
+        "./scripts/build/build_examples.py --target $TARGET --build-profile release gen"; then
+        break
+    fi
+    [ "$attempt" -lt 3 ] || { echo "!! gn gen failed after $attempt attempts" >&2; exit 1; }
+    echo "==> gn gen attempt $attempt failed, retrying in 30s"
+    sleep 30
+done
 
 # Labels mirror what copyToSrcAndroid() in scripts/build/builders/android.py stages for CHIPTool.
 # src/controller/java:java data_deps build/chip/java:shared_cpplib, which copies libc++_shared.so.
