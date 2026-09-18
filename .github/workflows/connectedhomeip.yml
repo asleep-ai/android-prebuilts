@@ -121,7 +121,6 @@ jobs:
             echo "| upstream | \`$upstream_tag\` (\`$upstream_commit\`) |"
             echo "| image | \`$build_image\` |"
             echo "| ABIs | $abis |"
-            echo "| patches applied | $patches |"
             echo "| PAA root certs (assets/matter/paa) | $paa_count |"
             echo "| build time (gen + ninja, all ABIs) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
             for so in connectedhomeip/out/jni/*/*.so; do
@@ -208,7 +207,7 @@ jobs:
             echo "ai.asleep:matter-controller-android:$v"
             echo
             echo "Built from project-chip/connectedhomeip $upstream_tag ($upstream_commit) in $build_image."
-            echo "ABIs: $abis. Patches: $patches. Build time (gen + ninja): ${build_seconds}s."
+            echo "ABIs: $abis. Build time (gen + ninja): ${build_seconds}s."
             echo
             echo 'Resolve from https://maven.pkg.github.com/asleep-ai/android-prebuilts (see README for the Gradle snippet).'
           } > notes.md

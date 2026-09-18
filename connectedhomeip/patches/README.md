@@ -1,27 +1,14 @@
 # patches/
 
-Local patches on top of the pinned upstream tree, applied by `build.sh` in
-lexical order right after the fetch and before submodules are checked out
-(so a patch may also touch `.gitmodules`). Each one is `git format-patch`
-output against the pinned upstream commit. `build.sh` runs `git apply --check`
-first and fails the build if a patch no longer applies; the applied list is
-written to `build-info.env` (`patches=`) and shown in the run summary and the
-GitHub Release notes.
+Empty by policy. The prebuilt is an **unmodified build of the pinned upstream
+tag**: same sources, same GN configuration and toolchain as upstream CI, with
+only the unit tests and the demo APK left out. `build.sh` has no patch step.
 
-| Patch | What | Why | Drop when |
-|---|---|---|---|
-| `0001-android-ble-scan-timeout.patch` | `src/platform/android/java/chip/platform/AndroidBleManager.java` line 95: `BLE_TIMEOUT_MS` 10000 -> 60000. The constant arms `MSG_BLE_FAIL` when `onNewConnection()` starts the BLE scan (line 471) and is re-armed on every `connectBLE()` attempt (line 577); the retry logic is untouched. | On our hub, a commissionee's first advertisement showed up after ~29 s, so `pairDeviceWithCode()` timed out at 10 s. | Upstream makes the timeout configurable (or raises it), or the app stops commissioning over BLE. |
-
-## Adding or rebasing a patch
-
-```bash
-git clone --depth 1 --branch <upstream_tag> --filter=blob:none --sparse \
-    https://github.com/project-chip/connectedhomeip.git /tmp/chip
-cd /tmp/chip && git sparse-checkout set <dir of the file>
-# edit, then
-git commit -am "<subject>" && git format-patch -1 --stdout > NNNN-short-description.patch
-```
-
-Number patches sequentially, describe what and why in the commit message,
-add a row to the table above and a line in the root README, and bump the
-build number (`connectedhomeip-v<tag>-<build+1>`) when publishing.
+Patching upstream here is a last resort, to be decided by the product owner,
+not by whoever hits a limitation first. Prefer, in order: solving it in the
+app on top of the public API, an upstream issue or PR, or moving the pin to a
+tag that already contains the fix. If a patch is ever unavoidable, add the
+apply step to `build.sh` together with the patch (`git format-patch` output
+against the pinned commit, `git apply --check` before applying, build fails
+on a non-clean apply, applied list in the run summary), document it in the
+root README with what, why and the drop condition, and bump the build number.
