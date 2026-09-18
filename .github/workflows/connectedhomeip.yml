@@ -23,7 +23,9 @@ jobs:
   build:
     name: Build (upstream image, arm64-v8a, release)
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    # Upstream builds this target in about 20 min; a hang (run 1 sat 3 h in a post-ninja test
+    # action) must fail fast instead of burning the 6 h default.
+    timeout-minutes: 120
     # Same image upstream CI used at the pinned tag (connectedhomeip/UPSTREAM: build_image).
     # /:/runner-root-volume lets us prune the host's unused SDKs like upstream's
     # maximize-runner-disk action does; android builds otherwise run out of disk.
@@ -99,7 +101,7 @@ jobs:
             echo "|---|---|"
             echo "| upstream | \`$upstream_tag\` (\`$upstream_commit\`) |"
             echo "| image | \`$build_image\` |"
-            echo "| build time (build_examples.py) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
+            echo "| build time (ninja, library targets) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
             for so in connectedhomeip/out/jni/arm64-v8a/*.so; do
               echo "| $(basename "$so") | $(du -h "$so" | cut -f1) ($(stat -c %s "$so") bytes) |"
             done

@@ -96,11 +96,16 @@ git push origin connectedhomeip-v1.6.0.0-1
 Android controller library of the Matter SDK, built from
 `project-chip/connectedhomeip` at the tag pinned in
 [`connectedhomeip/UPSTREAM`](connectedhomeip/UPSTREAM), inside the Docker
-image upstream CI used at that tag, with upstream's own
-`scripts/build/build_examples.py --target android-arm64-chip-tool --build-profile release build`
-(the same invocation as upstream `.github/workflows/smoketest-android.yaml`).
-arm64-v8a only. No caching between runs; one clean build per tag (about 25 to
-35 minutes on `ubuntu-latest`).
+image upstream CI used at that tag. `build.sh` runs upstream's own submodule
+checkout and bootstrap, then upstream's
+`scripts/build/build_examples.py --target android-arm64-chip-tool --build-profile release gen`
+for the GN configuration (identical args to upstream's
+`.github/workflows/smoketest-android.yaml`), and then ninja-builds only the
+controller library targets. Upstream's `build` step would instead build the
+whole GN `default` group (on Android that includes every unit-test object,
+because `chip_build_tests` defaults to true) and then the CHIPTool demo APK;
+neither is part of the artifact. arm64-v8a only. No caching between runs;
+one clean build per tag.
 
 Upstream ships no AAR at this tag (`examples/android/CHIPTool/chip-library` is
 not part of the scripted build), so `assemble_aar.py` packs one from the eight

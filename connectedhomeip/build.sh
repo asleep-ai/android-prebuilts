@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the connectedhomeip Android controller library exactly the way upstream CI does.
+# Build the connectedhomeip Android controller library with upstream's own toolchain and GN setup.
 #
 # Runs inside the upstream Docker image (see UPSTREAM: build_image), which provides
 # ANDROID_HOME, ANDROID_NDK_HOME, JAVA_HOME (17), kotlinc and the pigweed bootstrap deps.
@@ -55,13 +55,40 @@ PW_NO_CIPD_CACHE_DIR=1 PW_ENVSETUP_NO_BANNER=1 bash -c 'source scripts/bootstrap
 # are used) and android CI otherwise runs out of disk.
 rm -rf .environment/cipd/packages/arm || true
 
-echo "==> build $TARGET (release)"
-start="$(date +%s)"
+# Upstream CI runs `build_examples.py --target $TARGET build`, which (a) ninja-builds the whole GN
+# `default` group -- on Android that includes every unit-test object because chip_build_tests
+# defaults to true -- and (b) then compiles the CHIPTool demo APK with Gradle. We only need the
+# controller library, so run upstream's `gen` step (identical gn args) and then ninja just the
+# library targets. Same inputs, same compiler flags, a fraction of the work.
+echo "==> gn gen $TARGET (release)"
 ./scripts/run_in_build_env.sh \
-    "./scripts/build/build_examples.py --target $TARGET --build-profile release build"
+    "./scripts/build/build_examples.py --target $TARGET --build-profile release gen"
+
+# Labels mirror what copyToSrcAndroid() in scripts/build/builders/android.py stages for CHIPTool.
+# src/controller/java:java data_deps build/chip/java:shared_cpplib, which copies libc++_shared.so.
+ninja_targets=(
+    src/controller/java:jni
+    src/controller/java:java
+    src/controller/java:android_chip_im
+    src/controller/java:chipclusterID
+    src/controller/java:chipcluster
+    src/controller/java:onboarding_payload
+    src/controller/java:tlv
+    src/controller/java:jsontlv
+    src/platform/android:java
+)
+echo "==> ninja ${ninja_targets[*]}"
+start="$(date +%s)"
+./scripts/run_in_build_env.sh "ninja -C out/$TARGET ${ninja_targets[*]}"
 end="$(date +%s)"
 build_seconds=$((end - start))
-echo "==> build took ${build_seconds}s"
+echo "==> ninja took ${build_seconds}s"
+
+# build_examples.py strips the release .so after its Gradle step; do the same here.
+strip="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+for so in "out/$TARGET/lib/jni/$ABI"/*.so; do
+    "$strip" -s "$so"
+done
 
 build_out="out/$TARGET"
 [ -d "$build_out/lib" ] || { echo "!! $build_out/lib missing" >&2; exit 1; }
