@@ -1,0 +1,7 @@
+# Build state (never committed; one clean build per tag in CI)
+connectedhomeip/out/
+connectedhomeip/dist/
+connectedhomeip/upstream/
+**/.gradle/
+**/build/
+.DS_Store

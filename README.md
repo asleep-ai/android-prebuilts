@@ -1,0 +1,123 @@
+# android-prebuilts
+
+Build recipes for third-party Android libraries that asleep-ai has to compile
+itself, published as Maven artifacts on GitHub Packages
+(`https://maven.pkg.github.com/asleep-ai/android-prebuilts`).
+
+Nothing built lives in git. Each package folder pins an upstream tag, holds the
+build script and optional patches, and has a workflow that builds once per tag
+on a clean GitHub-hosted runner and publishes the result. The recipes here are
+Apache-2.0; each artifact keeps the license of its upstream project.
+
+## Packages
+
+| Folder | Artifact | Upstream | Contents |
+|---|---|---|---|
+| [`connectedhomeip/`](connectedhomeip/) | `ai.asleep:matter-controller-android` | [project-chip/connectedhomeip](https://github.com/project-chip/connectedhomeip) (CSA Matter SDK) | Android Matter controller AAR, arm64-v8a |
+
+## Layout convention
+
+```
+<package>/
+  UPSTREAM         upstream_repo / upstream_tag / upstream_commit / build_image (shell key=value)
+  build.sh         reproduces upstream's own build steps, stages outputs into out/
+  patches/         NNNN-*.patch applied after clone (README explains when they are empty)
+  assemble_*.py    turns staged outputs into the publishable artifact (optional)
+  publish/         small Gradle project: maven-publish of the artifact + POM, no AGP
+.github/workflows/<package>.yml   tag-triggered build + publish
+```
+
+## Tag convention
+
+`<package>-v<upstream version>-<build>`, published as `<upstream version>-<build>`.
+
+| Tag | Published version |
+|---|---|
+| `connectedhomeip-v1.6.0.0-1` | `ai.asleep:matter-controller-android:1.6.0.0-1` |
+
+The trailing `-<build>` is our build number: bump it when the recipe changes for
+the same upstream tag (patch, packaging fix). Bump the upstream part only
+together with `UPSTREAM`; the workflow refuses a tag whose upstream version
+does not match the pinned `upstream_tag`. Workflows run only on such tags (or a
+manual `workflow_dispatch` naming an existing tag), never on pushes to `main`.
+
+## Consuming
+
+Same setup as [asleep-ai/hue-ble-android](https://github.com/asleep-ai/hue-ble-android/blob/main/docs/publishing.md):
+`gpr.user` / `gpr.token` (PAT with `read:packages`) in `~/.gradle/gradle.properties`,
+or `GITHUB_ACTOR` / `GITHUB_TOKEN` in CI.
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        maven {
+            name = "AsleepPrebuilts"
+            url = uri("https://maven.pkg.github.com/asleep-ai/android-prebuilts")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR") ?: ""
+                password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN") ?: ""
+            }
+        }
+    }
+}
+
+// build.gradle.kts
+dependencies {
+    implementation("ai.asleep:matter-controller-android:1.6.0.0-1")
+}
+```
+
+## Adding a package
+
+1. Create `<package>/UPSTREAM` with the repo, tag, commit and the exact build
+   image or toolchain upstream's own CI uses at that tag (read their workflow;
+   do not guess).
+2. Write `build.sh` that follows upstream's documented build steps and stages
+   outputs into `out/`. Verify the checked-out commit against the pin.
+3. Add `publish/` (copy `connectedhomeip/publish`, change the coordinates and
+   POM) and, if upstream ships no Maven-ready artifact, an assembler script.
+4. Add `.github/workflows/<package>.yml` triggered by `<package>-v*` tags plus
+   `workflow_dispatch`. Record build time and artifact sizes in the run summary.
+5. Push the tag, wait for green, resolve the artifact from a throwaway project
+   and record consumer notes in this README.
+
+## Cutting a release
+
+```bash
+git tag connectedhomeip-v1.6.0.0-1
+git push origin connectedhomeip-v1.6.0.0-1
+```
+
+---
+
+## connectedhomeip
+
+Android controller library of the Matter SDK, built from
+`project-chip/connectedhomeip` at the tag pinned in
+[`connectedhomeip/UPSTREAM`](connectedhomeip/UPSTREAM), inside the Docker
+image upstream CI used at that tag, with upstream's own
+`scripts/build/build_examples.py --target android-arm64-chip-tool --build-profile release build`
+(the same invocation as upstream `.github/workflows/smoketest-android.yaml`).
+arm64-v8a only. No caching between runs; one clean build per tag (about 25 to
+35 minutes on `ubuntu-latest`).
+
+Upstream ships no AAR at this tag (`examples/android/CHIPTool/chip-library` is
+not part of the scripted build), so `assemble_aar.py` packs one from the eight
+jars and two shared objects that upstream's `copyToSrcAndroid()` stages for the
+CHIPTool app:
+
+| AAR entry | Source |
+|---|---|
+| `classes.jar` | `CHIPController.jar`, `CHIPInteractionModel.jar`, `CHIPClusters.jar`, `CHIPClusterID.jar`, `AndroidPlatform.jar`, `OnboardingPayload.jar`, `libMatterTlv.jar`, `libMatterJson.jar` merged |
+| `jni/arm64-v8a/libCHIPController.so` | controller JNI, stripped (release profile) |
+| `jni/arm64-v8a/libc++_shared.so` | NDK r28c libc++ runtime |
+| `META-INF/LICENSE`, `META-INF/NOTICE` | upstream Apache-2.0 files |
+
+POM dependencies (`compile`): `androidx.annotation:annotation:1.1.0` (upstream's
+only Android dependency) and `org.jetbrains.kotlin:kotlin-stdlib:2.1.10` (the
+Kotlin jars are compiled with the image's kotlinc 2.1.10).
+
+### Consumer notes
+
+Filled in after the first published build; see the section below.

@@ -1,0 +1,151 @@
+# Builds the connectedhomeip Android controller library once per tag and publishes it to
+# GitHub Packages as ai.asleep:matter-controller-android:<version>.
+#
+# Trigger: tag connectedhomeip-v<upstream version>-<build>, e.g. connectedhomeip-v1.6.0.0-1
+# (published version 1.6.0.0-1), or workflow_dispatch with that tag name. Never on push to main.
+name: connectedhomeip
+
+on:
+  push:
+    tags:
+      - "connectedhomeip-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. connectedhomeip-v1.6.0.0-1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (upstream image, arm64-v8a, release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    # Same image upstream CI used at the pinned tag (connectedhomeip/UPSTREAM: build_image).
+    # /:/runner-root-volume lets us prune the host's unused SDKs like upstream's
+    # maximize-runner-disk action does; android builds otherwise run out of disk.
+    container:
+      image: ghcr.io/project-chip/chip-build-android:200
+      volumes:
+        - "/:/runner-root-volume"
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      upstream_tag: ${{ steps.meta.outputs.upstream_tag }}
+      upstream_commit: ${{ steps.meta.outputs.upstream_commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve version from tag and check the UPSTREAM pin
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^connectedhomeip-v(.+)-([0-9]+)$ ]]; then
+            echo "tag '$tag' must match connectedhomeip-v<upstream version>-<build>" >&2
+            exit 1
+          fi
+          version="${tag#connectedhomeip-v}"
+          source connectedhomeip/UPSTREAM
+          if [[ "v${version%-*}" != "$upstream_tag" ]]; then
+            echo "tag says upstream v${version%-*} but connectedhomeip/UPSTREAM pins $upstream_tag" >&2
+            exit 1
+          fi
+          # NOTE: keep jobs.build.container.image in sync with build_image in connectedhomeip/UPSTREAM.
+          {
+            echo "version=$version"
+            echo "upstream_tag=$upstream_tag"
+            echo "upstream_commit=$upstream_commit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Free runner disk (mirrors upstream maximize-runner-disk)
+        shell: bash
+        run: |
+          root=/runner-root-volume
+          df -h "$root" | tail -1
+          for dir in /usr/share/dotnet /usr/local/lib/android/sdk/platforms /usr/local/lib/android/sdk/build-tools; do
+            [ -d "$root$dir" ] && rm -rf -- "$root$dir" && echo "pruned $dir"
+          done
+          df -h "$root" | tail -1
+
+      - name: Build
+        shell: bash
+        env:
+          SRC_DIR: ${{ runner.temp }}/connectedhomeip
+          OUT_DIR: ${{ github.workspace }}/connectedhomeip/out
+        run: bash connectedhomeip/build.sh
+
+      - name: Assemble AAR
+        shell: bash
+        run: |
+          python3 connectedhomeip/assemble_aar.py \
+            --input connectedhomeip/out \
+            --output "connectedhomeip/dist/matter-controller-android-${{ steps.meta.outputs.version }}.aar"
+          unzip -l "connectedhomeip/dist/matter-controller-android-${{ steps.meta.outputs.version }}.aar"
+
+      - name: Run summary
+        shell: bash
+        run: |
+          source connectedhomeip/out/build-info.env
+          {
+            echo "## connectedhomeip ${{ steps.meta.outputs.version }}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| upstream | \`$upstream_tag\` (\`$upstream_commit\`) |"
+            echo "| image | \`$build_image\` |"
+            echo "| build time (build_examples.py) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
+            for so in connectedhomeip/out/jni/arm64-v8a/*.so; do
+              echo "| $(basename "$so") | $(du -h "$so" | cut -f1) ($(stat -c %s "$so") bytes) |"
+            done
+            echo "| aar | $(du -h connectedhomeip/dist/*.aar | cut -f1) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matter-controller-android-${{ steps.meta.outputs.version }}
+          path: |
+            connectedhomeip/dist/*.aar
+            connectedhomeip/out/build-info.env
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: Publish to GitHub Packages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: matter-controller-android-${{ needs.build.outputs.version }}
+          path: artifact
+
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          aar="$(ls artifact/dist/*.aar)"
+          ./connectedhomeip/publish/gradlew -p connectedhomeip/publish publish \
+            -Pversion="${{ needs.build.outputs.version }}" \
+            -Paar="$PWD/$aar" \
+            -PupstreamTag="${{ needs.build.outputs.upstream_tag }}" \
+            -PupstreamCommit="${{ needs.build.outputs.upstream_commit }}"
+          echo "published ai.asleep:matter-controller-android:${{ needs.build.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,8 @@
+# Upstream pin for project-chip/connectedhomeip (the CSA Matter SDK).
+# Sourced by build.sh and by the workflow; keep it shell-parseable (key=value only).
+# Bump both lines together, then push a tag connectedhomeip-v<tag-without-v>-<build>.
+upstream_repo=https://github.com/project-chip/connectedhomeip.git
+upstream_tag=v1.6.0.0
+upstream_commit=250a9e6c50ee2068107f3c4808b680f5f2925415
+# Docker image upstream CI used at this tag (.github/workflows/full-android.yaml, smoketest-android.yaml).
+build_image=ghcr.io/project-chip/chip-build-android:200
