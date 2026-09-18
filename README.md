@@ -139,6 +139,16 @@ POM dependencies (`compile`): `androidx.annotation:annotation:1.1.0` (upstream's
 only Android dependency) and `org.jetbrains.kotlin:kotlin-stdlib:2.1.10` (the
 Kotlin jars are compiled with the image's kotlinc 2.1.10).
 
+### Patches
+
+Applied by `build.sh` from [`connectedhomeip/patches/`](connectedhomeip/patches/)
+(details, rebase recipe and drop conditions in that folder's README); the run
+summary and the Release notes list what was applied.
+
+| Since | Patch | Change |
+|---|---|---|
+| `1.6.0.0-4` | `0001-android-ble-scan-timeout.patch` | `AndroidBleManager.BLE_TIMEOUT_MS` 10 s -> 60 s (`src/platform/android/java/chip/platform/AndroidBleManager.java:95`). The BLE scan started by `onNewConnection()` and each `connectBLE()` attempt share this fail timer; our hub saw a commissionee's first advertisement only after ~29 s, so `pairDeviceWithCode()` could not succeed with the stock value. Retry logic unchanged. Drop when upstream makes it configurable. |
+
 ### Consumer notes (vs `com.google.matter:matter-android-demo-sdk:1.0`)
 
 Verified 2026-09-18 on `1.6.0.0-1` by resolving it from a throwaway AGP 8.11
@@ -169,6 +179,9 @@ Packaging differences:
   `assets/matter/paa/*.der`, copied from the same upstream tag. Read them via an
   `AttestationTrustStoreDelegate`; do **not** also ship your own copy under that
   asset path, because AGP merges assets and fails the build on duplicates.
+- **BLE fail timer is 60 s, not 10 s** (from `1.6.0.0-4`, see Patches): slow
+  commissionees that advertise late now pair; a genuinely absent device takes
+  up to 60 s to report failure instead of 10 s.
 - **Sources jar** is published alongside (`-sources.jar` classifier), so IDE
   navigation into `chip.*` / `matter.*` shows source instead of decompiled
   bytecode.

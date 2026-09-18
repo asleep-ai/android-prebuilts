@@ -13,6 +13,7 @@
 #   jni/<abi>/*.so         libCHIPController.so, libc++_shared.so per ABI (stripped, release)
 #   sources/               Java/Kotlin sources of those jars (hand-written + build-generated)
 #   paa/*.der              upstream credentials/production/paa-root-certs (production PAA roots)
+#   build-info.env also lists the applied patches/*.patch names (patches=...)
 #   LICENSE, NOTICE        upstream license files
 #   build-info.env         commit, build seconds, .so sizes (consumed by the workflow summary)
 set -euo pipefail
@@ -57,12 +58,22 @@ if [ "$head" != "$upstream_commit" ]; then
     exit 1
 fi
 
+# Local patches, applied in lexical order on the pristine upstream tree. A patch that does not
+# apply cleanly fails the build (git apply is atomic per patch: --check first, then apply).
+applied_patches=""
 shopt -s nullglob
 for p in "$PKG_DIR"/patches/*.patch; do
-    echo "==> applying $(basename "$p")"
+    name="$(basename "$p")"
+    echo "==> applying $name"
+    if ! git apply --check "$p"; then
+        echo "!! $name does not apply cleanly to $upstream_tag; rebase it (see patches/README.md)" >&2
+        exit 1
+    fi
     git apply --verbose "$p"
+    applied_patches="${applied_patches:+$applied_patches }$name"
 done
 shopt -u nullglob
+echo "==> applied patches: ${applied_patches:-none}"
 
 # Same steps as upstream .github/actions/checkout-submodules and .github/actions/bootstrap,
 # minus their buildjet cache (not available here) and the TSAN sysctl step (not needed).
@@ -194,6 +205,7 @@ echo "==> staged $paa_count PAA root certs"
     echo "build_image=$build_image"
     echo "build_seconds=$build_seconds"
     echo "abis=$ABIS"
+    echo "patches=${applied_patches:-none}"
     echo "paa_count=$paa_count"
     for so in "$OUT_DIR"/jni/*/*.so; do
         abi="$(basename "$(dirname "$so")" | tr -c 'A-Za-z0-9_\n' '_')"
