@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG="$ROOT/connectedhomeip"
 WORK="${WORK:-$(mktemp -d)}"
 OUT="$WORK/out"
-mkdir -p "$OUT/jars" "$OUT/jni/arm64-v8a" "$OUT/jni/x86_64" "$OUT/sources/src_x/chip/devicecontroller" "$OUT/sources/gen/matter/tlv"
+mkdir -p "$OUT/jars" "$OUT/jni/arm64-v8a" "$OUT/jni/x86_64" "$OUT/sources/src_x/chip/devicecontroller" "$OUT/sources/gen/matter/tlv" "$OUT/paa"
 
 # Eight tiny jars whose contents overlap on an identical entry (allowed) but not a conflicting one.
 python3 - "$OUT" <<'PY'
@@ -28,12 +28,15 @@ for i, name in enumerate(jars):
 (out / "sources/src_x/chip/devicecontroller/Fake0.java").write_text("package chip.devicecontroller; class Fake0 {}\n")
 (out / "sources/gen/matter/tlv/Reader.kt").write_text("package matter.tlv\nclass Reader\n")
 (out / "LICENSE").write_text("Apache-2.0 (fixture)\n")
+for n in ("dcld_mirror_CN_Fixture_PAA_vid_0x0001.der", "dcld_mirror_CN_Fixture_PAA_vid_0x0002.der"):
+    (out / "paa" / n).write_bytes(b"\x30\x82 fixture " + n.encode())
 (out / "NOTICE").write_text("fixture\n")
 PY
 rm -f "$OUT/jni/arm64-v8a/libCHIPController.so.tmp"
 
 python3 "$PKG/assemble_aar.py" --input "$OUT" \
-    --output "$WORK/dist/x-0.0.0-selftest.aar" --sources-output "$WORK/dist/x-0.0.0-selftest-sources.jar"
+    --output "$WORK/dist/x-0.0.0-selftest.aar" --sources-output "$WORK/dist/x-0.0.0-selftest-sources.jar" \
+    --upstream-tag v0.0.0-selftest
 
 echo "==> AAR entries"
 python3 - "$WORK/dist/x-0.0.0-selftest.aar" "$WORK/dist/x-0.0.0-selftest-sources.jar" <<'PY'
@@ -42,7 +45,9 @@ aar = sorted(zipfile.ZipFile(sys.argv[1]).namelist())
 print("\n".join(aar))
 need = {"AndroidManifest.xml", "classes.jar", "R.txt", "META-INF/LICENSE", "META-INF/NOTICE",
         "jni/arm64-v8a/libCHIPController.so", "jni/arm64-v8a/libc++_shared.so",
-        "jni/x86_64/libCHIPController.so", "jni/x86_64/libc++_shared.so"}
+        "jni/x86_64/libCHIPController.so", "jni/x86_64/libc++_shared.so",
+        "assets/matter/paa/README.md", "assets/matter/paa/dcld_mirror_CN_Fixture_PAA_vid_0x0001.der",
+        "assets/matter/paa/dcld_mirror_CN_Fixture_PAA_vid_0x0002.der"}
 missing = need - set(aar)
 assert not missing, f"missing AAR entries: {missing}"
 import io

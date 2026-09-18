@@ -105,7 +105,8 @@ jobs:
           python3 connectedhomeip/assemble_aar.py \
             --input connectedhomeip/out \
             --output "connectedhomeip/dist/matter-controller-android-$v.aar" \
-            --sources-output "connectedhomeip/dist/matter-controller-android-$v-sources.jar"
+            --sources-output "connectedhomeip/dist/matter-controller-android-$v-sources.jar" \
+            --upstream-tag "${{ steps.meta.outputs.upstream_tag }}"
           unzip -l "connectedhomeip/dist/matter-controller-android-$v.aar"
 
       - name: Run summary
@@ -120,6 +121,7 @@ jobs:
             echo "| upstream | \`$upstream_tag\` (\`$upstream_commit\`) |"
             echo "| image | \`$build_image\` |"
             echo "| ABIs | $abis |"
+            echo "| PAA root certs (assets/matter/paa) | $paa_count |"
             echo "| build time (gen + ninja, all ABIs) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
             for so in connectedhomeip/out/jni/*/*.so; do
               echo "| $(basename "$(dirname "$so")")/$(basename "$so") | $(du -h "$so" | cut -f1) ($(stat -c %s "$so") bytes) |"

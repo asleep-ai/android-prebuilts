@@ -12,6 +12,7 @@
 #   jars/*.jar             the 8 jars upstream stages for CHIPTool (copyToSrcAndroid), from the first ABI
 #   jni/<abi>/*.so         libCHIPController.so, libc++_shared.so per ABI (stripped, release)
 #   sources/               Java/Kotlin sources of those jars (hand-written + build-generated)
+#   paa/*.der              upstream credentials/production/paa-root-certs (production PAA roots)
 #   LICENSE, NOTICE        upstream license files
 #   build-info.env         commit, build seconds, .so sizes (consumed by the workflow summary)
 set -euo pipefail
@@ -173,12 +174,19 @@ build_seconds=$((end - start))
 echo "==> build ($ABIS) took ${build_seconds}s"
 cp LICENSE NOTICE "$OUT_DIR/"
 
+# Production PAA root certificates (DCL mirror) from the same upstream tag; the AAR ships them
+# under assets/matter/paa/ for the consumer's AttestationTrustStoreDelegate.
+mkdir -p "$OUT_DIR/paa"
+cp credentials/production/paa-root-certs/*.der "$OUT_DIR/paa/"
+echo "==> staged $(ls "$OUT_DIR/paa" | wc -l) PAA root certs"
+
 {
     echo "upstream_tag=$upstream_tag"
     echo "upstream_commit=$upstream_commit"
     echo "build_image=$build_image"
     echo "build_seconds=$build_seconds"
     echo "abis=$ABIS"
+    echo "paa_count=$(ls "$OUT_DIR/paa" | wc -l)"
     for so in "$OUT_DIR"/jni/*/*.so; do
         abi="$(basename "$(dirname "$so")" | tr -c 'A-Za-z0-9_\n' '_')"
         echo "size_${abi}_$(basename "$so" .so | tr -c 'A-Za-z0-9_\n' '_')=$(stat -c %s "$so")"

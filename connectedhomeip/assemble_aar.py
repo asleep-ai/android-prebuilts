@@ -9,12 +9,14 @@ scripted build), so this packs one by hand:
   jni/<abi>/*.so          controller JNI + libc++_shared, one directory per built ABI
   META-INF/LICENSE|NOTICE upstream Apache-2.0 files
   R.txt                   empty (no resources)
+  assets/matter/paa/      production PAA root certs (<input>/paa/*.der) + README.md provenance note
 
 With --sources-output it also writes a -sources.jar from <input>/sources: every .java/.kt file is
 re-rooted at its first chip/ or matter/ path segment, so the jar is package-relative regardless
 of where build.sh copied the trees from. Coverage against classes.jar is printed, not enforced.
 """
 import argparse
+import datetime
 import io
 import pathlib
 import sys
@@ -25,6 +27,15 @@ MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
     package="ai.asleep.matter.controller">
     <uses-sdk android:minSdkVersion="24" />
 </manifest>
+"""
+
+PAA_README = """# Matter production PAA root certificates
+
+Copied unchanged from project-chip/connectedhomeip {tag},
+path `credentials/production/paa-root-certs/*.der` ({count} files, Apache-2.0),
+on {date} by asleep-ai/android-prebuilts. Consumers load them through an
+`AttestationTrustStoreDelegate` reading `assets/matter/paa/*.der`. Do not ship a
+second copy under the same asset path; AGP fails the build on duplicate assets.
 """
 
 JAR_MANIFEST = "Manifest-Version: 1.0\nCreated-By: asleep-ai/android-prebuilts\n"
@@ -110,6 +121,7 @@ def main() -> None:
     ap.add_argument("--input", required=True, type=pathlib.Path, help="build.sh OUT_DIR")
     ap.add_argument("--output", required=True, type=pathlib.Path, help="path of the .aar to write")
     ap.add_argument("--sources-output", type=pathlib.Path, help="path of the -sources.jar to write")
+    ap.add_argument("--upstream-tag", default="", help="recorded in assets/matter/paa/README.md")
     args = ap.parse_args()
 
     abi_dirs = sorted(d for d in (args.input / "jni").iterdir() if d.is_dir() and any(d.glob("*.so")))
@@ -130,6 +142,15 @@ def main() -> None:
             p = args.input / lic
             if p.is_file():
                 aar.writestr(_fixed(f"META-INF/{lic}"), p.read_bytes())
+        paa = sorted((args.input / "paa").glob("*.der"))
+        if not paa:
+            sys.exit(f"no PAA root certs under {args.input / 'paa'}")
+        for der in paa:
+            aar.writestr(_fixed(f"assets/matter/paa/{der.name}"), der.read_bytes())
+        aar.writestr(_fixed("assets/matter/paa/README.md"), PAA_README.format(
+            tag=args.upstream_tag or "(unknown)", count=len(paa),
+            date=datetime.date.today().isoformat()))
+        print(f"assets/matter/paa: {len(paa)} .der files")
     print(f"wrote {args.output} ({args.output.stat().st_size} bytes)")
     if args.sources_output:
         sources_jar(args.input / "sources", args.sources_output, class_names)

@@ -132,6 +132,7 @@ CHIPTool app:
 | `jni/<abi>/libCHIPController.so` | controller JNI, stripped (release profile), per ABI |
 | `jni/<abi>/libc++_shared.so` | NDK r28c libc++ runtime, per ABI |
 | `META-INF/LICENSE`, `META-INF/NOTICE` | upstream Apache-2.0 files |
+| `assets/matter/paa/*.der` + `README.md` | upstream `credentials/production/paa-root-certs` (production PAA roots, 40 files) from the same tag, for the consumer's `AttestationTrustStoreDelegate` |
 | `-sources.jar` (separate artifact) | the Java/Kotlin sources behind `classes.jar`: upstream's hand-written trees plus the build-generated cluster wrappers, re-rooted per package by `assemble_aar.py`; coverage is printed in the build log |
 
 POM dependencies (`compile`): `androidx.annotation:annotation:1.1.0` (upstream's
@@ -162,6 +163,10 @@ Packaging differences:
   `libCHIPController.so`.
 - **`minSdk 24`** (demo: 27). `kotlin-stdlib` 2.1.10 and
   `androidx.annotation` 1.1.0 come in as POM dependencies.
+- **Production PAA root certificates are inside the AAR** (from `1.6.0.0-3`) at
+  `assets/matter/paa/*.der`, copied from the same upstream tag. Read them via an
+  `AttestationTrustStoreDelegate`; do **not** also ship your own copy under that
+  asset path, because AGP merges assets and fails the build on duplicates.
 - **Sources jar** is published alongside (`-sources.jar` classifier), so IDE
   navigation into `chip.*` / `matter.*` shows source instead of decompiled
   bytecode.
