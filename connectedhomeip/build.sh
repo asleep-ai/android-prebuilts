@@ -74,6 +74,12 @@ for attempt in 1 2 3; do
     sleep $((attempt * 60))
 done
 
+# build_examples.py names the GN out dir after the target plus the build profile
+# (out/android-arm64-chip-tool-release); locate it rather than hardcode the suffix.
+build_out="$(ls -d out/${TARGET}* | head -1)"
+[ -n "$build_out" ] && [ -f "$build_out/build.ninja" ] || { echo "!! no GN out dir under out/ for $TARGET" >&2; ls out || true; exit 1; }
+echo "==> GN out dir: $build_out"
+
 # Labels mirror what copyToSrcAndroid() in scripts/build/builders/android.py stages for CHIPTool.
 # src/controller/java:java data_deps build/chip/java:shared_cpplib, which copies libc++_shared.so.
 ninja_targets=(
@@ -89,18 +95,17 @@ ninja_targets=(
 )
 echo "==> ninja ${ninja_targets[*]}"
 start="$(date +%s)"
-./scripts/run_in_build_env.sh "ninja -C out/$TARGET ${ninja_targets[*]}"
+./scripts/run_in_build_env.sh "ninja -C $build_out ${ninja_targets[*]}"
 end="$(date +%s)"
 build_seconds=$((end - start))
 echo "==> ninja took ${build_seconds}s"
 
 # build_examples.py strips the release .so after its Gradle step; do the same here.
 strip="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
-for so in "out/$TARGET/lib/jni/$ABI"/*.so; do
+for so in "$build_out/lib/jni/$ABI"/*.so; do
     "$strip" -s "$so"
 done
 
-build_out="out/$TARGET"
 [ -d "$build_out/lib" ] || { echo "!! $build_out/lib missing" >&2; exit 1; }
 
 echo "==> staging into $OUT_DIR"
