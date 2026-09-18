@@ -178,7 +178,8 @@ cp LICENSE NOTICE "$OUT_DIR/"
 # under assets/matter/paa/ for the consumer's AttestationTrustStoreDelegate.
 mkdir -p "$OUT_DIR/paa"
 cp credentials/production/paa-root-certs/*.der "$OUT_DIR/paa/"
-echo "==> staged $(ls "$OUT_DIR/paa" | wc -l) PAA root certs"
+paa_count="$(find "$OUT_DIR/paa" -name '*.der' | wc -l)"
+echo "==> staged $paa_count PAA root certs"
 
 {
     echo "upstream_tag=$upstream_tag"
@@ -186,7 +187,7 @@ echo "==> staged $(ls "$OUT_DIR/paa" | wc -l) PAA root certs"
     echo "build_image=$build_image"
     echo "build_seconds=$build_seconds"
     echo "abis=$ABIS"
-    echo "paa_count=$(ls "$OUT_DIR/paa" | wc -l)"
+    echo "paa_count=$paa_count"
     for so in "$OUT_DIR"/jni/*/*.so; do
         abi="$(basename "$(dirname "$so")" | tr -c 'A-Za-z0-9_\n' '_')"
         echo "size_${abi}_$(basename "$so" .so | tr -c 'A-Za-z0-9_\n' '_')=$(stat -c %s "$so")"
