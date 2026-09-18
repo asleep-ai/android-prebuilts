@@ -61,7 +61,8 @@ rm -rf .environment/cipd/packages/arm || true
 # controller library, so run upstream's `gen` step (identical gn args) and then ninja just the
 # library targets. Same inputs, same compiler flags, a fraction of the work.
 # gen also runs third_party/android_deps/gradlew (downloads a Gradle distribution and
-# androidx.annotation); that network fetch has failed transiently on hosted runners, so retry.
+# androidx.annotation) and third_party/java_deps/set_up_java_deps.sh (curl from Maven Central);
+# both have failed transiently on hosted runners (connection reset, HTTP 429), so retry with backoff.
 echo "==> gn gen $TARGET (release)"
 for attempt in 1 2 3; do
     if ./scripts/run_in_build_env.sh \
@@ -69,8 +70,8 @@ for attempt in 1 2 3; do
         break
     fi
     [ "$attempt" -lt 3 ] || { echo "!! gn gen failed after $attempt attempts" >&2; exit 1; }
-    echo "==> gn gen attempt $attempt failed, retrying in 30s"
-    sleep 30
+    echo "==> gn gen attempt $attempt failed, retrying in $((attempt * 60))s"
+    sleep $((attempt * 60))
 done
 
 # Labels mirror what copyToSrcAndroid() in scripts/build/builders/android.py stages for CHIPTool.
