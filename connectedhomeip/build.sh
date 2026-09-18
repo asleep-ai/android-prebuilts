@@ -40,10 +40,17 @@ target_for_abi() {
 echo "==> upstream $upstream_repo @ $upstream_tag ($upstream_commit)"
 git config --global --add safe.directory '*'
 
-if [ ! -d "$SRC_DIR/.git" ]; then
-    git clone --depth 1 --branch "$upstream_tag" "$upstream_repo" "$SRC_DIR"
-fi
+# SRC_DIR may already hold a cache-restored .environment/ (the workflow restores the pigweed
+# bootstrap there before this script runs), so fetch into it instead of `git clone`, which
+# refuses a non-empty directory.
+mkdir -p "$SRC_DIR"
 cd "$SRC_DIR"
+if [ ! -d .git ]; then
+    git init -q
+    git remote add origin "$upstream_repo"
+    git fetch --depth 1 origin "refs/tags/$upstream_tag:refs/tags/$upstream_tag"
+    git checkout -q "$upstream_tag"
+fi
 head="$(git rev-parse HEAD)"
 if [ "$head" != "$upstream_commit" ]; then
     echo "!! tag $upstream_tag resolved to $head, expected $upstream_commit (UPSTREAM pin is stale or the tag moved)" >&2
