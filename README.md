@@ -39,7 +39,7 @@ Apache-2.0; each artifact keeps the license of its upstream project.
 | `connectedhomeip-v1.6.0.0-1` | `ai.asleep:matter-controller-android:1.6.0.0-1` |
 
 The trailing `-<build>` is our build number: bump it when the recipe changes for
-the same upstream tag (patch, packaging fix). Bump the upstream part only
+the same upstream tag (packaging or workflow fix). Bump the upstream part only
 together with `UPSTREAM`; the workflow refuses a tag whose upstream version
 does not match the pinned `upstream_tag`. Workflows run only on such tags (or a
 manual `workflow_dispatch` naming an existing tag), never on pushes to `main`.
