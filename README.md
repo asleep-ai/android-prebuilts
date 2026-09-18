@@ -152,7 +152,9 @@ Packaging differences:
 
 - **arm64-v8a and x86_64 only** (from `1.6.0.0-2`; `-1` was arm64 only). The
   demo also carried armeabi-v7a and x86. Real hubs and x86_64 emulators are
-  covered; 32-bit ABIs are not, so keep `abiFilters` to these two.
+  covered; 32-bit ABIs are not. The AAR grows by one `.so` set per ABI, but
+  the app only packages what its `ndk { abiFilters }` (or the AAB split)
+  selects, so keep the app filtered to `arm64-v8a` for production APKs.
 - **One `classes.jar`** instead of three jars under `libs/`; no code change needed.
 - **`chip.setuppayload.*` is gone.** Upstream replaced it with the Kotlin package
   `matter.onboardingpayload.*` (`OnboardingPayloadParser.parseQrCode`,
