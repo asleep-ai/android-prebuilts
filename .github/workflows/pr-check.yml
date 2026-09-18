@@ -1,0 +1,36 @@
+# Cheap checks for every PR: shell and workflow lint, and the packaging self-test
+# (fabricated inputs -> assemble_aar.py -> publishToMavenLocal). No CHIP build here.
+name: pr-check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck -x connectedhomeip/build.sh scripts/selftest.sh
+
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest .
+          ./actionlint -color
+
+      - name: python syntax
+        run: python3 -m py_compile connectedhomeip/assemble_aar.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: packaging self-test
+        run: bash scripts/selftest.sh

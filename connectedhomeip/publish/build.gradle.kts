@@ -1,7 +1,7 @@
 // Publishes a prebuilt AAR (assembled by ../assemble_aar.py) to GitHub Packages.
 // No Android Gradle Plugin: the artifact is a file, the POM is written here.
 //
-//   ./gradlew publish -Pversion=1.6.0.0-1 -Paar=/path/to/x.aar \
+//   ./gradlew publish -Pversion=1.6.0.0-1 -Paar=/path/to/x.aar [-Psources=/path/to/x-sources.jar] \
 //       -PupstreamTag=v1.6.0.0 -PupstreamCommit=<sha>
 //
 // Credentials: gpr.user / gpr.token Gradle properties, else GITHUB_ACTOR / GITHUB_TOKEN
@@ -19,6 +19,7 @@ val publishVersion = prop("version", "<upstream version>-<build>, e.g. 1.6.0.0-1
 val aarPath = prop("aar", "<path to .aar>")
 val upstreamTag = prop("upstreamTag", "v<upstream tag>")
 val upstreamCommit = prop("upstreamCommit", "<sha>")
+val sourcesPath = (project.findProperty("sources") as String?)?.takeIf { it.isNotBlank() }
 val upstreamRepo = "https://github.com/project-chip/connectedhomeip"
 val thisRepo = "https://github.com/asleep-ai/android-prebuilts"
 
@@ -35,6 +36,7 @@ tasks.withType<PublishToMavenRepository>().configureEach {
     doFirst {
         require(missing.isEmpty()) { "missing properties: ${missing.joinToString(" ")}" }
         require(file(aarPath).isFile) { "AAR not found: $aarPath" }
+        sourcesPath?.let { require(file(it).isFile) { "sources jar not found: $it" } }
     }
 }
 
@@ -46,6 +48,12 @@ publishing {
             version = publishVersion
             artifact(file(aarPath)) {
                 extension = "aar"
+            }
+            sourcesPath?.let {
+                artifact(file(it)) {
+                    classifier = "sources"
+                    extension = "jar"
+                }
             }
             pom {
                 packaging = "aar"

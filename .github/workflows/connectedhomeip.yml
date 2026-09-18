@@ -1,8 +1,10 @@
 # Builds the connectedhomeip Android controller library once per tag and publishes it to
-# GitHub Packages as ai.asleep:matter-controller-android:<version>.
+# GitHub Packages as ai.asleep:matter-controller-android:<version>, plus a GitHub Release
+# carrying the same files.
 #
 # Trigger: tag connectedhomeip-v<upstream version>-<build>, e.g. connectedhomeip-v1.6.0.0-1
 # (published version 1.6.0.0-1), or workflow_dispatch with that tag name. Never on push to main.
+# Re-running for an already published version skips the upload and the release (idempotent).
 name: connectedhomeip
 
 on:
@@ -19,12 +21,15 @@ on:
 permissions:
   contents: read
 
+env:
+  ABIS: arm64-v8a x86_64
+
 jobs:
   build:
-    name: Build (upstream image, arm64-v8a, release)
+    name: Build (upstream image, release)
     runs-on: ubuntu-latest
-    # Upstream builds this target in about 20 min; a hang (run 1 sat 3 h in a post-ninja test
-    # action) must fail fast instead of burning the 6 h default.
+    # Library-only ninja takes about 6 min per ABI; a hang (run 1 sat 3 h in a post-ninja test
+    # action of upstream's full build) must fail fast instead of burning the 6 h default.
     timeout-minutes: 120
     # Same image upstream CI used at the pinned tag (connectedhomeip/UPSTREAM: build_image).
     # /:/runner-root-volume lets us prune the host's unused SDKs like upstream's
@@ -35,6 +40,7 @@ jobs:
         - "/:/runner-root-volume"
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
       upstream_tag: ${{ steps.meta.outputs.upstream_tag }}
       upstream_commit: ${{ steps.meta.outputs.upstream_commit }}
     steps:
@@ -60,6 +66,7 @@ jobs:
           fi
           # NOTE: keep jobs.build.container.image in sync with build_image in connectedhomeip/UPSTREAM.
           {
+            echo "tag=$tag"
             echo "version=$version"
             echo "upstream_tag=$upstream_tag"
             echo "upstream_commit=$upstream_commit"
@@ -75,6 +82,15 @@ jobs:
           done
           df -h "$root" | tail -1
 
+      # The pigweed bootstrap (.environment: CIPD packages + Python venv) depends only on the
+      # upstream commit and the image, not on our recipe, so it is safe to reuse between runs.
+      # build.sh still runs bootstrap.sh; on a hit it just finds everything present.
+      - name: Restore bootstrap environment
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/connectedhomeip/.environment
+          key: chip-bootstrap-${{ steps.meta.outputs.upstream_commit }}-chip-build-android-200-v1
+
       - name: Build
         shell: bash
         env:
@@ -82,13 +98,15 @@ jobs:
           OUT_DIR: ${{ github.workspace }}/connectedhomeip/out
         run: bash connectedhomeip/build.sh
 
-      - name: Assemble AAR
+      - name: Assemble AAR and sources jar
         shell: bash
         run: |
+          v="${{ steps.meta.outputs.version }}"
           python3 connectedhomeip/assemble_aar.py \
             --input connectedhomeip/out \
-            --output "connectedhomeip/dist/matter-controller-android-${{ steps.meta.outputs.version }}.aar"
-          unzip -l "connectedhomeip/dist/matter-controller-android-${{ steps.meta.outputs.version }}.aar"
+            --output "connectedhomeip/dist/matter-controller-android-$v.aar" \
+            --sources-output "connectedhomeip/dist/matter-controller-android-$v-sources.jar"
+          unzip -l "connectedhomeip/dist/matter-controller-android-$v.aar"
 
       - name: Run summary
         shell: bash
@@ -101,28 +119,31 @@ jobs:
             echo "|---|---|"
             echo "| upstream | \`$upstream_tag\` (\`$upstream_commit\`) |"
             echo "| image | \`$build_image\` |"
-            echo "| build time (ninja, library targets) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
-            for so in connectedhomeip/out/jni/arm64-v8a/*.so; do
-              echo "| $(basename "$so") | $(du -h "$so" | cut -f1) ($(stat -c %s "$so") bytes) |"
+            echo "| ABIs | $abis |"
+            echo "| build time (gen + ninja, all ABIs) | $((build_seconds / 60)) min $((build_seconds % 60)) s |"
+            for so in connectedhomeip/out/jni/*/*.so; do
+              echo "| $(basename "$(dirname "$so")")/$(basename "$so") | $(du -h "$so" | cut -f1) ($(stat -c %s "$so") bytes) |"
             done
-            echo "| aar | $(du -h connectedhomeip/dist/*.aar | cut -f1) |"
+            for f in connectedhomeip/dist/*; do
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: matter-controller-android-${{ steps.meta.outputs.version }}
           path: |
-            connectedhomeip/dist/*.aar
+            connectedhomeip/dist/*
             connectedhomeip/out/build-info.env
           if-no-files-found: error
           retention-days: 90
 
   publish:
-    name: Publish to GitHub Packages
+    name: Publish to GitHub Packages and GitHub Release
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -139,15 +160,58 @@ jobs:
           name: matter-controller-android-${{ needs.build.outputs.version }}
           path: artifact
 
-      - name: Publish
+      - name: Check whether this version is already published
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ needs.build.outputs.version }}"
+          if gh api "/orgs/${{ github.repository_owner }}/packages/maven/ai.asleep.matter-controller-android/versions" \
+               --jq '.[].name' 2>/dev/null | grep -qx "$v"; then
+            echo "package=true" >> "$GITHUB_OUTPUT"
+            echo "ai.asleep:matter-controller-android:$v is already on GitHub Packages; skipping upload" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "package=false" >> "$GITHUB_OUTPUT"
+          fi
+          if gh release view "${{ needs.build.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to GitHub Packages
+        if: steps.existing.outputs.package != 'true'
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          aar="$(ls artifact/dist/*.aar)"
+          v="${{ needs.build.outputs.version }}"
           ./connectedhomeip/publish/gradlew -p connectedhomeip/publish publish \
-            -Pversion="${{ needs.build.outputs.version }}" \
-            -Paar="$PWD/$aar" \
+            -Pversion="$v" \
+            -Paar="$PWD/artifact/dist/matter-controller-android-$v.aar" \
+            -Psources="$PWD/artifact/dist/matter-controller-android-$v-sources.jar" \
             -PupstreamTag="${{ needs.build.outputs.upstream_tag }}" \
             -PupstreamCommit="${{ needs.build.outputs.upstream_commit }}"
-          echo "published ai.asleep:matter-controller-android:${{ needs.build.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "published ai.asleep:matter-controller-android:$v" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub Release
+        if: steps.existing.outputs.release != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ needs.build.outputs.version }}"
+          source artifact/out/build-info.env
+          {
+            echo "ai.asleep:matter-controller-android:$v"
+            echo
+            echo "Built from project-chip/connectedhomeip $upstream_tag ($upstream_commit) in $build_image."
+            echo "ABIs: $abis. Build time (gen + ninja): ${build_seconds}s."
+            echo
+            echo 'Resolve from https://maven.pkg.github.com/asleep-ai/android-prebuilts (see README for the Gradle snippet).'
+          } > notes.md
+          gh release create "${{ needs.build.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --title "connectedhomeip $v" \
+            --notes-file notes.md \
+            artifact/dist/*
+          echo "release: ${{ needs.build.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"

@@ -24,7 +24,8 @@ Apache-2.0; each artifact keeps the license of its upstream project.
   patches/         NNNN-*.patch applied after clone (README explains when they are empty)
   assemble_*.py    turns staged outputs into the publishable artifact (optional)
   publish/         small Gradle project: maven-publish of the artifact + POM, no AGP
-.github/workflows/<package>.yml   tag-triggered build + publish
+.github/workflows/<package>.yml   tag-triggered build + publish + GitHub Release
+.github/workflows/pr-check.yml    shellcheck, actionlint, packaging self-test (scripts/selftest.sh)
 ```
 
 ## Tag convention
@@ -40,6 +41,13 @@ the same upstream tag (patch, packaging fix). Bump the upstream part only
 together with `UPSTREAM`; the workflow refuses a tag whose upstream version
 does not match the pinned `upstream_tag`. Workflows run only on such tags (or a
 manual `workflow_dispatch` naming an existing tag), never on pushes to `main`.
+Once a version is on GitHub Packages the tag is never moved: re-running the
+workflow for it rebuilds but skips the upload and the release, so a rerun is
+safe and a recipe change means a new build number.
+
+Each publish also creates a GitHub Release named after the tag with the AAR,
+the `-sources.jar` and the build summary attached, so the files can be
+inspected without registry credentials.
 
 ## Consuming
 
@@ -79,7 +87,10 @@ dependencies {
    POM) and, if upstream ships no Maven-ready artifact, an assembler script.
 4. Add `.github/workflows/<package>.yml` triggered by `<package>-v*` tags plus
    `workflow_dispatch`. Record build time and artifact sizes in the run summary.
-5. Push the tag, wait for green, resolve the artifact from a throwaway project
+5. Open a PR; `pr-check` runs shellcheck, actionlint and `scripts/selftest.sh`
+   (fabricated inputs through the assembler and `publishToMavenLocal`), so
+   packaging mistakes surface before a tag is cut.
+6. Push the tag, wait for green, resolve the artifact from a throwaway project
    and record consumer notes in this README.
 
 ## Cutting a release
@@ -104,8 +115,11 @@ for the GN configuration (identical args to upstream's
 controller library targets. Upstream's `build` step would instead build the
 whole GN `default` group (on Android that includes every unit-test object,
 because `chip_build_tests` defaults to true) and then the CHIPTool demo APK;
-neither is part of the artifact. arm64-v8a only. No caching between runs;
-one clean build per tag.
+neither is part of the artifact. Built for `arm64-v8a` and `x86_64` (the
+`ABIS` env in the workflow; one gen + ninja pass per ABI, about 6 min each).
+The pigweed bootstrap tree (`.environment`) is cached between runs keyed on
+the upstream commit and image, since it does not depend on our recipe; the
+GN/ninja build itself is never cached, so every tag is a clean build.
 
 Upstream ships no AAR at this tag (`examples/android/CHIPTool/chip-library` is
 not part of the scripted build), so `assemble_aar.py` packs one from the eight
@@ -115,27 +129,29 @@ CHIPTool app:
 | AAR entry | Source |
 |---|---|
 | `classes.jar` | `CHIPController.jar`, `CHIPInteractionModel.jar`, `CHIPClusters.jar`, `CHIPClusterID.jar`, `AndroidPlatform.jar`, `OnboardingPayload.jar`, `libMatterTlv.jar`, `libMatterJson.jar` merged |
-| `jni/arm64-v8a/libCHIPController.so` | controller JNI, stripped (release profile) |
-| `jni/arm64-v8a/libc++_shared.so` | NDK r28c libc++ runtime |
+| `jni/<abi>/libCHIPController.so` | controller JNI, stripped (release profile), per ABI |
+| `jni/<abi>/libc++_shared.so` | NDK r28c libc++ runtime, per ABI |
 | `META-INF/LICENSE`, `META-INF/NOTICE` | upstream Apache-2.0 files |
+| `-sources.jar` (separate artifact) | the Java/Kotlin sources behind `classes.jar`: upstream's hand-written trees plus the build-generated cluster wrappers, re-rooted per package by `assemble_aar.py`; coverage is printed in the build log |
 
 POM dependencies (`compile`): `androidx.annotation:annotation:1.1.0` (upstream's
 only Android dependency) and `org.jetbrains.kotlin:kotlin-stdlib:2.1.10` (the
 Kotlin jars are compiled with the image's kotlinc 2.1.10).
 
-### Consumer notes (1.6.0.0-1 vs `com.google.matter:matter-android-demo-sdk:1.0`)
+### Consumer notes (vs `com.google.matter:matter-android-demo-sdk:1.0`)
 
-Verified 2026-09-18 by resolving `ai.asleep:matter-controller-android:1.6.0.0-1`
-from a throwaway AGP 8.11 library project and diffing `javap -public` output
-against the demo AAR. Build: ninja 6 min, whole build job 11 min on
-`ubuntu-latest`; `libCHIPController.so` 4.67 MB stripped (demo: 26.5 MB),
-`libc++_shared.so` 1.25 MB, AAR 10.9 MB, 9298 classes.
+Verified 2026-09-18 on `1.6.0.0-1` by resolving it from a throwaway AGP 8.11
+library project and diffing `javap -public` output against the demo AAR
+(`1.6.0.0-2` adds the x86_64 ABI and the sources jar; the Java API is
+identical). Build: ninja 6 min per ABI on `ubuntu-latest`;
+`libCHIPController.so` 4.67 MB stripped for arm64 (demo: 26.5 MB),
+`libc++_shared.so` 1.25 MB, 9298 classes.
 
 Packaging differences:
 
-- **arm64-v8a only.** The demo carried armeabi-v7a, x86 and x86_64 too. An
-  x86_64 emulator cannot load this artifact; add `abiFilters` or an ABI split so
-  the app does not silently ship without the native library.
+- **arm64-v8a and x86_64 only** (from `1.6.0.0-2`; `-1` was arm64 only). The
+  demo also carried armeabi-v7a and x86. Real hubs and x86_64 emulators are
+  covered; 32-bit ABIs are not, so keep `abiFilters` to these two.
 - **One `classes.jar`** instead of three jars under `libs/`; no code change needed.
 - **`chip.setuppayload.*` is gone.** Upstream replaced it with the Kotlin package
   `matter.onboardingpayload.*` (`OnboardingPayloadParser.parseQrCode`,
@@ -146,6 +162,9 @@ Packaging differences:
   `libCHIPController.so`.
 - **`minSdk 24`** (demo: 27). `kotlin-stdlib` 2.1.10 and
   `androidx.annotation` 1.1.0 come in as POM dependencies.
+- **Sources jar** is published alongside (`-sources.jar` classifier), so IDE
+  navigation into `chip.*` / `matter.*` shows source instead of decompiled
+  bytecode.
 
 API differences the consumer will hit:
 
