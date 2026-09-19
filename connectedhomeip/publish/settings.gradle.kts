@@ -1,1 +1,1 @@
-rootProject.name = "matter-controller-android"
+rootProject.name = "matter-sdk-android"

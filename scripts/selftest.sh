@@ -64,10 +64,10 @@ echo "==> publishToMavenLocal"
     -Pversion=0.0.0-selftest -Paar="$WORK/dist/x-0.0.0-selftest.aar" \
     -Psources="$WORK/dist/x-0.0.0-selftest-sources.jar" \
     -PupstreamTag=v0.0.0 -PupstreamCommit=0000000
-m2="$HOME/.m2/repository/ai/asleep/matter-controller-android/0.0.0-selftest"
+m2="$HOME/.m2/repository/ai/asleep/matter-sdk-android/0.0.0-selftest"
 ls "$m2"
 grep -q "<packaging>aar</packaging>" "$m2"/*.pom
 grep -q "<artifactId>kotlin-stdlib</artifactId>" "$m2"/*.pom
-[ -f "$m2/matter-controller-android-0.0.0-selftest-sources.jar" ]
+[ -f "$m2/matter-sdk-android-0.0.0-selftest-sources.jar" ]
 rm -rf "$m2"
 echo "selftest: OK ($WORK)"

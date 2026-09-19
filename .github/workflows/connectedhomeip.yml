@@ -1,5 +1,5 @@
 # Builds the connectedhomeip Android controller library once per tag and publishes it to
-# GitHub Packages as ai.asleep:matter-controller-android:<version>, plus a GitHub Release
+# GitHub Packages as ai.asleep:matter-sdk-android:<version>, plus a GitHub Release
 # carrying the same files.
 #
 # Trigger: tag connectedhomeip-v<upstream version>-<build>, e.g. connectedhomeip-v1.6.0.0-1
@@ -104,10 +104,10 @@ jobs:
           v="${{ steps.meta.outputs.version }}"
           python3 connectedhomeip/assemble_aar.py \
             --input connectedhomeip/out \
-            --output "connectedhomeip/dist/matter-controller-android-$v.aar" \
-            --sources-output "connectedhomeip/dist/matter-controller-android-$v-sources.jar" \
+            --output "connectedhomeip/dist/matter-sdk-android-$v.aar" \
+            --sources-output "connectedhomeip/dist/matter-sdk-android-$v-sources.jar" \
             --upstream-tag "${{ steps.meta.outputs.upstream_tag }}"
-          unzip -l "connectedhomeip/dist/matter-controller-android-$v.aar"
+          unzip -l "connectedhomeip/dist/matter-sdk-android-$v.aar"
 
       - name: Run summary
         shell: bash
@@ -133,7 +133,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: matter-controller-android-${{ steps.meta.outputs.version }}
+          name: matter-sdk-android-${{ steps.meta.outputs.version }}
           path: |
             connectedhomeip/dist/*
             connectedhomeip/out/build-info.env
@@ -159,7 +159,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: matter-controller-android-${{ needs.build.outputs.version }}
+          name: matter-sdk-android-${{ needs.build.outputs.version }}
           path: artifact
 
       - name: Check whether this version is already published
@@ -168,10 +168,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           v="${{ needs.build.outputs.version }}"
-          if gh api "/orgs/${{ github.repository_owner }}/packages/maven/ai.asleep.matter-controller-android/versions" \
+          if gh api "/orgs/${{ github.repository_owner }}/packages/maven/ai.asleep.matter-sdk-android/versions" \
                --jq '.[].name' 2>/dev/null | grep -qx "$v"; then
             echo "package=true" >> "$GITHUB_OUTPUT"
-            echo "ai.asleep:matter-controller-android:$v is already on GitHub Packages; skipping upload" >> "$GITHUB_STEP_SUMMARY"
+            echo "ai.asleep:matter-sdk-android:$v is already on GitHub Packages; skipping upload" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "package=false" >> "$GITHUB_OUTPUT"
           fi
@@ -190,11 +190,11 @@ jobs:
           v="${{ needs.build.outputs.version }}"
           ./connectedhomeip/publish/gradlew -p connectedhomeip/publish publish \
             -Pversion="$v" \
-            -Paar="$PWD/artifact/dist/matter-controller-android-$v.aar" \
-            -Psources="$PWD/artifact/dist/matter-controller-android-$v-sources.jar" \
+            -Paar="$PWD/artifact/dist/matter-sdk-android-$v.aar" \
+            -Psources="$PWD/artifact/dist/matter-sdk-android-$v-sources.jar" \
             -PupstreamTag="${{ needs.build.outputs.upstream_tag }}" \
             -PupstreamCommit="${{ needs.build.outputs.upstream_commit }}"
-          echo "published ai.asleep:matter-controller-android:$v" >> "$GITHUB_STEP_SUMMARY"
+          echo "published ai.asleep:matter-sdk-android:$v" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create GitHub Release
         if: steps.existing.outputs.release != 'true'
@@ -204,7 +204,7 @@ jobs:
           v="${{ needs.build.outputs.version }}"
           source artifact/out/build-info.env
           {
-            echo "ai.asleep:matter-controller-android:$v"
+            echo "ai.asleep:matter-sdk-android:$v"
             echo
             echo "Built from project-chip/connectedhomeip $upstream_tag ($upstream_commit) in $build_image."
             echo "ABIs: $abis. Build time (gen + ninja): ${build_seconds}s."

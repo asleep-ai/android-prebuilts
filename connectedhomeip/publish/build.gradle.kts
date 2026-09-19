@@ -44,7 +44,7 @@ publishing {
     publications {
         create<MavenPublication>("gpr") {
             groupId = "ai.asleep"
-            artifactId = "matter-controller-android"
+            artifactId = "matter-sdk-android"
             version = publishVersion
             artifact(file(aarPath)) {
                 extension = "aar"

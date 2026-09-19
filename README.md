@@ -15,7 +15,7 @@ Apache-2.0; each artifact keeps the license of its upstream project.
 
 | Folder | Artifact | Upstream | Contents |
 |---|---|---|---|
-| [`connectedhomeip/`](connectedhomeip/) | `ai.asleep:matter-controller-android` | [project-chip/connectedhomeip](https://github.com/project-chip/connectedhomeip) (CSA Matter SDK) | Android Matter controller AAR, arm64-v8a |
+| [`connectedhomeip/`](connectedhomeip/) | `ai.asleep:matter-sdk-android` | [project-chip/connectedhomeip](https://github.com/project-chip/connectedhomeip) (CSA Matter SDK) | Android Matter controller AAR, arm64-v8a |
 
 ## Layout convention
 
@@ -36,7 +36,7 @@ Apache-2.0; each artifact keeps the license of its upstream project.
 
 | Tag | Published version |
 |---|---|
-| `connectedhomeip-v1.6.0.0-1` | `ai.asleep:matter-controller-android:1.6.0.0-1` |
+| `connectedhomeip-v1.6.0.0-4` | `ai.asleep:matter-sdk-android:1.6.0.0-4` |
 
 The trailing `-<build>` is our build number: bump it when the recipe changes for
 the same upstream tag (packaging or workflow fix). Bump the upstream part only
@@ -74,7 +74,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("ai.asleep:matter-controller-android:1.6.0.0-1")
+    implementation("ai.asleep:matter-sdk-android:1.6.0.0-4")
 }
 ```
 
@@ -105,6 +105,10 @@ git push origin connectedhomeip-v1.6.0.0-1
 ---
 
 ## connectedhomeip
+
+1.6.0.0-1 to 1.6.0.0-3 were published as `ai.asleep:matter-controller-android` and remain
+available; from 1.6.0.0-4 the artifactId is `matter-sdk-android` so that
+`ai.asleep:matter-controller-android` can name our own controller library.
 
 Android controller library of the Matter SDK, built from
 `project-chip/connectedhomeip` at the tag pinned in
