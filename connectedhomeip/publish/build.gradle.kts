@@ -57,7 +57,7 @@ publishing {
             }
             pom {
                 packaging = "aar"
-                name.set("Matter controller for Android (connectedhomeip prebuilt)")
+                name.set("Matter SDK for Android (connectedhomeip controller prebuilt)")
                 description.set(
                     "Android controller library of project-chip/connectedhomeip $upstreamTag " +
                         "($upstreamCommit), arm64-v8a release build. Java classes chip.devicecontroller.*, " +

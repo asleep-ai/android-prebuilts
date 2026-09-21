@@ -106,9 +106,9 @@ git push origin connectedhomeip-v1.6.0.0-1
 
 ## connectedhomeip
 
-1.6.0.0-1 to 1.6.0.0-3 were published as `ai.asleep:matter-controller-android` and remain
+1.6.0.0-1 to 1.6.0.0-3 were published as `ai.asleep:matter-sdk-android` and remain
 available; from 1.6.0.0-4 the artifactId is `matter-sdk-android` so that
-`ai.asleep:matter-controller-android` can name our own controller library.
+`ai.asleep:matter-sdk-android` can name our own controller library.
 
 Android controller library of the Matter SDK, built from
 `project-chip/connectedhomeip` at the tag pinned in
@@ -147,10 +147,11 @@ Kotlin jars are compiled with the image's kotlinc 2.1.10).
 
 ### Consumer notes (vs `com.google.matter:matter-android-demo-sdk:1.0`)
 
-Verified 2026-09-18 on `1.6.0.0-1` by resolving it from a throwaway AGP 8.11
-library project and diffing `javap -public` output against the demo AAR
-(`1.6.0.0-2` adds the x86_64 ABI and the sources jar; the Java API is
-identical). Build: ninja 6 min per ABI on `ubuntu-latest`;
+Verified 2026-09-18 on `matter-sdk-android:1.6.0.0-1` by resolving it
+from a throwaway AGP 8.11 library project and diffing `javap -public` output
+against the demo AAR (`-2` adds the x86_64 ABI and the sources jar, `-3` the
+PAA assets, `matter-sdk-android:-4` is the rename with identical content; the
+Java API is the same throughout). Build: ninja 6 min per ABI on `ubuntu-latest`;
 `libCHIPController.so` 4.67 MB stripped for arm64 (demo: 26.5 MB),
 `libc++_shared.so` 1.25 MB, 9298 classes.
 
